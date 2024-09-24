@@ -1,0 +1,135 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  config.vm.define :ubuntuproxy do |ubuntuserver|
+    ubuntuserver.vm.box = "generic-x64/ubuntu2310"
+    #ubuntuserver.vm.network :public_network,
+    #  dev: 'enp9s0',
+    #  auto_config: true
+    ubuntuserver.vm.network :forwarded_port, :guest => 80, :host => 8080, :host_ip => "0.0.0.0", :gateway_ports => true
+    ubuntuserver.vm.provider :libvirt do |libvirt|
+      libvirt.id_ssh_key_file = "/home/jason/projects/kali_remote/id_ssh.key"
+      #libvirt.uri = "qemu+ssh://10.130.10.50/system"
+      libvirt.host = '10.130.10.50'
+      libvirt.connect_via_ssh = true
+      libvirt.username = "jason"
+      libvirt.password = ''
+      libvirt.memory = 2048
+      libvirt.cpus = 2
+    end
+  end
+ 
+  # Default false
+  config.ssh.forward_agent = true
+  config.ssh.forward_x11 = true
+ 
+  # Default true
+  config.ssh.keep_alive = false
+   
+  # Default 300s
+  config.vm.boot_timeout = 900
+
+  # Create a private network, which allows host-only access to the machine
+  config.vm.network "public_network", 
+    :dev => "bridge0",
+    :mode => "bridge",
+    :type => "bridge",
+    :ip => "192.168.100.11"
+
+  config.vm.provision "file", source: "~/projects/gm-com-chain.pem", destination: "~/"
+  
+  config.vm.provision "shell", inline: <<-SHELL
+    echo foo
+    sudo cp /home/vagrant/gm-com-chain.pem /etc/pki/fwupd/ 
+    #sudo mv ~/gdroot-g2.pem /etc/pki/ca-trust/source/anchors/
+    #sudo update-ca-trust
+    #/etc/pki/fwupd/
+    # Base requirements for installing X11
+    #sudo dnf update -y
+    #sudo dnf install -y git
+    # Add desktop environment
+    #sudo dnf install -y xorg-x11-xauth
+    #sudo dnf install -y xclock
+    #sudo dnf install -y gnome-shell
+    #sudo dnf install xorg-x11-apps
+    #sudo dnf install -y xorg*
+    #sudo dnf install -y @xfce-desktop-environment
+    sudo sed -i '/#X11Forwarding no/s//X11Forwarding yes/' /etc/ssh/sshd_config
+    sudo rm -rf /root/.Xauthority
+    sudo rm -rf /root/.serverauth.*  
+  SHELL
+
+config.vm.provision "shell", privileged: false, inline: <<-SHELL
+  echo foo
+  Install the prerequisites:
+
+  sudo apt install -y curl gnupg2 ca-certificates lsb-release ubuntu-keyring
+
+  #Import an official nginx signing key so apt could verify the packages authenticity. Fetch the key:
+
+  curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
+      | sudo tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+
+  #Verify that the downloaded file contains the proper key:
+
+  gpg --dry-run --quiet --no-keyring --import --import-options import-show /usr/share/keyrings/nginx-archive-keyring.gpg
+
+  #The output should contain the full fingerprint 573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62 as follows:
+
+  #pub   rsa2048 2011-08-19 [SC] [expires: 2024-06-14]
+  #      573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62
+  #uid                      nginx signing key <signing-key@nginx.com>
+
+  #If the fingerprint is different, remove the file.
+
+  #To set up the apt repository for stable nginx packages, run the following command:
+
+  #echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+  #http://nginx.org/packages/ubuntu `lsb_release -cs` nginx" \
+  #    | sudo tee /etc/apt/sources.list.d/nginx.list
+
+  #If you would like to use mainline nginx packages, run the following command instead:
+
+  echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+  http://nginx.org/packages/mainline/ubuntu `lsb_release -cs` nginx" \
+      | sudo tee /etc/apt/sources.list.d/nginx.list
+
+  #Set up repository pinning to prefer our packages over distribution-provided ones:
+
+  echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
+      | sudo tee /etc/apt/preferences.d/99nginx
+
+  #To install nginx, run the following commands:
+
+  sudo apt update
+  sudo apt-get install -y net-tools
+  sudo apt-get install -y nginx
+  sudo apt-get install -y locate
+  sudo updatedb
+  sudo ufw enable
+  sudo ufw allow http
+  sudo ufw reload
+  sudo apt install nginx
+  sudo systemctl start nginx
+  sudo systemctl status nginx
+
+SHELL
+
+config.vm.provision "shell", privileged: false, inline: <<-SHELL
+  echo bar
+  #vi /etc/nginx/conf.d/default.conf
+  
+SHELL
+
+config.vm.provision "shell", privileged: false, inline: <<-SHELL
+  echo bas 
+SHELL
+
+  config.vm.synced_folder ".", "/vagrant", type: "rsync",
+    rsync__exclude: ".git/, ./vagrant"
+end
